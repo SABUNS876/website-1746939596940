@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Tic Tac Toe - PvP with Bot or Friend</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&display=swap');
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    font-family: 'Poppins', sans-serif;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    height: 100vh;
+    padding: 1rem;
+    color: #fff;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+    text-align: center;
+    user-select: none;
+  }
+  #mode-select {
+    margin-bottom: 1rem;
+    width: 100%;
+    max-width: 320px;
+    background: #5a4a91;
+    border-radius: 0.6rem;
+    border: none;
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+    color: #fff;
+    cursor: pointer;
+    user-select: none;
+  }
+  #board {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-gap: 12px;
+    max-width: 320px;
+    width: 100%;
+    margin-bottom: 1rem;
+    user-select: none;
+  }
+  .cell {
+    background: #927bd9;
+    border-radius: 0.8rem;
+    padding-top: 100%;
+    position: relative;
+    transition: background-color 0.3s ease;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+  }
+  .cell.disabled {
+    cursor: default;
+    background: #665ea3;
+  }
+  .cell.highlight {
+    background: #f6a821;
+    box-shadow: 0 0 15px #f6a821;
+  }
+  .cell span {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 3.5rem;
+    font-weight: 700;
+    line-height: 1;
+    user-select: none;
+  }
+  #status {
+    max-width: 320px;
+    text-align: center;
+    font-size: 1.2rem;
+    min-height: 2rem;
+    font-weight: 600;
+  }
+  #restart-btn {
+    display: block;
+    margin: 0 auto 1rem auto;
+    padding: 0.7rem 2rem;
+    background: #f6a821;
+    border: none;
+    border-radius: 0.6rem;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #222;
+    cursor: pointer;
+    box-shadow: 0 4px 8px #a97414;
+    user-select: none;
+    transition: background-color 0.3s ease;
+  }
+  #restart-btn:hover {
+    background: #f3b94f;
+  }
+  @media (max-width: 400px) {
+    body {
+      padding: 1rem 0.5rem;
+    }
+    #board {
+      max-width: 95vw;
+      grid-gap: 8px;
+    }
+    .cell span {
+      font-size: 2.5rem;
+    }
+    #mode-select, #status, #restart-btn {
+      max-width: 95vw;
+      font-size: 1rem;
+    }
+  }
+</style>
+</head>
+<body>
+<h1>Tic Tac Toe</h1>
+<select id="mode-select" aria-label="Select game mode">
+  <option value="bot">Play vs Bot</option>
+  <option value="friend">Play vs Friend</option>
+</select>
+<div id="board" aria-label="Tic Tac Toe Board" role="grid" aria-live="polite" aria-relevant="additions removals"></div>
+<div id="status" role="status" aria-live="polite"></div>
+<button id="restart-btn" aria-label="Restart Game">Restart Game</button>
+
+<script>
+  (function() {
+    const boardEl = document.getElementById('board');
+    const statusEl = document.getElementById('status');
+    const restartBtn = document.getElementById('restart-btn');
+    const modeSelect = document.getElementById('mode-select');
+
+    const PLAYER_X = 'X';
+    const PLAYER_O = 'O';
+
+    let board = ['', '', '', '', '', '', '', '', ''];
+    let currentPlayer = PLAYER_X;
+    let gameActive = true;
+    let vsBot = true;
+
+    const winningCombinations = [
+      [0,1,2],
+      [3,4,5],
+      [6,7,8],
+      [0,3,6],
+      [1,4,7],
+      [2,5,8],
+      [0,4,8],
+      [2,4,6]
+    ];
+
+    function createBoard() {
+      boardEl.innerHTML = '';
+      for(let i=0; i<9; i++){
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        cell.setAttribute('data-index', i);
+        cell.setAttribute('role','button');
+        cell.setAttribute('tabindex','0');
+        cell.setAttribute('aria-label', `Cell ${i+1}`);
+        cell.addEventListener('click', handleCellClick);
+        cell.addEventListener('keydown', function(e){
+          if(e.key === 'Enter' || e.key === ' '){
+            e.preventDefault();
+            handleCellClick.call(this, e);
+          }
+        });
+        boardEl.appendChild(cell);
+      }
+    }
+
+    function handleCellClick(e){
+      if(!gameActive) return;
+
+      const idx = parseInt(this.getAttribute('data-index'));
+      if(board[idx] !== '') return;
+
+      makeMove(idx, currentPlayer);
+      updateBoard();
+
+      if(checkWin(currentPlayer)) {
+        endGame(false, `${currentPlayer} wins!`);
+        return;
+      }
+
+      if(checkDraw()) {
+        endGame(true, `It's a draw!`);
+        return;
+      }
+
+      switchPlayer();
+
+      if(vsBot && currentPlayer === PLAYER_O){
+        // Bot turn delay for natural feel
+        gameActive = false; 
+        setTimeout(botMove, 400);
+      }
+    }
+
+    function makeMove(idx, player){
+      board[idx] = player;
+    }
+
+    function updateBoard(){
+      for(let i=0; i<9; i++){
+        const cell = boardEl.children[i];
+        cell.textContent = board[i];
+        cell.classList.toggle('disabled', board[i] !== '');
+      }
+    }
+
+    function switchPlayer(){
+      currentPlayer = currentPlayer === PLAYER_X ? PLAYER_O : PLAYER_X;
+      updateStatus();
+    }
+
+    function updateStatus(){
+      if(!gameActive) return;
+      statusEl.textContent = currentPlayer === PLAYER_X ? "Your turn (X)" : (vsBot ? "Bot's turn (O)" : "Friend's turn (O)");
+    }
+
+    function checkWin(player) {
+      return winningCombinations.some(comb => {
+        return comb.every(idx => board[idx] === player);
+      });
+    }
+
+    function checkDraw() {
+      return board.every(cell => cell !== '');
+    }
+
+    function endGame(draw, message) {
+      gameActive = false;
+      statusEl.textContent = message;
+      highlightWinningCells(draw ? [] : winningCombinations.find(comb => comb.every(idx => board[idx] === currentPlayer)));
+      disableBoard();
+    }
+
+    function highlightWinningCells(cells) {
+      if(cells.length === 0) return; 
+      cells.forEach(idx => {
+        boardEl.children[idx].classList.add('highlight');
+      });
+    }
+
+    function disableBoard(){
+      for(let i=0; i<9; i++){
+        boardEl.children[i].classList.add('disabled');
+      }
+    }
+
+    function botMove(){
+      // Simple AI: first try to win, then block player, else random
+      if(!gameActive) return;
+
+      let move = findBestMove(PLAYER_O); // bot tries to win
+      if(move === -1) move = findBestMove(PLAYER_X); // block player
+      if(move === -1) move = randomMove();
+
+      if(move !== -1){
+        makeMove(move, PLAYER_O);
+        updateBoard();
+        if(checkWin(PLAYER_O)) {
+          endGame(false, "Bot wins!");
+          return;
+        }
+        if(checkDraw()) {
+          endGame(true, "It's a draw!");
+          return;
+        }
+        switchPlayer();
+        gameActive = true;
+      }
+    }
+
+    function findBestMove(player) {
+      for(let i=0; i<9; i++) {
+        if(board[i] === '') {
+          board[i] = player;
+          let win = checkWin(player);
+          board[i] = '';
+          if(win) return i;
+        }
+      }
+      return -1;
+    }
+
+    function randomMove(){
+      const available = board.reduce((acc, val, idx) => {
+        if(val === '') acc.push(idx);
+        return acc;
+      }, []);
+      if(available.length === 0) return -1;
+      return available[Math.floor(Math.random() * available.length)];
+    }
+
+    function restartGame(){
+      board.fill('');
+      currentPlayer = PLAYER_X;
+      gameActive = true;
+      updateBoard();
+      updateStatus();
+      if(vsBot && currentPlayer === PLAYER_O){
+        gameActive = false;
+        setTimeout(botMove, 400);
+      }
+      clearHighlights();
+    }
+
+    function clearHighlights(){
+      for(let i=0; i<9; i++){
+        boardEl.children[i].classList.remove('highlight');
+      }
+    }
+
+    function onModeChange(){
+      vsBot = modeSelect.value === 'bot';
+      restartGame();
+      if(vsBot){
+        statusEl.textContent = "Your turn (X)";
+      } else {
+        statusEl.textContent = "Player X starts";
+      }
+    }
+
+    modeSelect.addEventListener('change', onModeChange);
+    restartBtn.addEventListener('click', restartGame);
+
+    // Initialize game
+    createBoard();
+    onModeChange();
+
+  })();
+</script>
+</body>
+</html>
+
+```
